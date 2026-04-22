@@ -83,14 +83,14 @@ def create_pdf_report():
                         ebay_payoff, att_payoff = -200, 200
                     elif offer == "Stingy" and response == "Accept":
                         ebay_payoff, att_payoff = -20, 20
-                    else:
+                    else:  # Stingy + Reject
                         ebay_payoff, att_payoff = -320, 300
-                else:
+                else:  # Innocent
                     if offer == "Generous" and response == "Accept":
-                        ebay_payoff, att_payoff = 0, 0
+                        ebay_payoff, att_payoff = -200, 200
                     elif offer == "Stingy" and response == "Accept":
                         ebay_payoff, att_payoff = -20, 20
-                    else:
+                    else:  # Stingy + Reject
                         ebay_payoff, att_payoff = 0, -20
                 results_data.append({
                     "Match_ID": match_id,
@@ -198,7 +198,7 @@ def export_payoffs_csv():
                     ebay_payoff, att_payoff = -320, 300
             else:
                 if offer == "Generous" and response == "Accept":
-                    ebay_payoff, att_payoff = 0, 0
+                    ebay_payoff, att_payoff = -200, 200
                 elif offer == "Stingy" and response == "Accept":
                     ebay_payoff, att_payoff = -20, 20
                 else:
@@ -567,21 +567,22 @@ This is a **dynamic signaling game** between two players:
    - **Reject (R)** → go to court
 
 ### 💰 Payoff Matrix (eBay's payoff, AT&T's payoff):
+
 **If eBay is Guilty (25% probability):**
 - Generous → Accept: (-200, 200)
-- Stingy → Accept: (-20, 20)
+- Stingy → Accept: (-20, 20)  
 - Stingy → Reject (Trial): (-320, 300)
 
 **If eBay is Innocent (75% probability):**
-- Generous → Not allowed
+- Generous → Accept: (-200, 200)  *(same as guilty case)*
 - Stingy → Accept: (-20, 20)
-- Stingy → Reject (Trial): (0, -20)
+- Stingy → Reject (Trial): (0, -20)  *(AT&T loses failed trial)*
 
 ### 🎮 Game Steps:
 **Step 1**: Player Registration  
 **Step 2**: Random Nature Draw (guilty/innocent hidden from AT&T)  
-**Step 3**: eBay's Move – Choose settlement offer  
-**Step 4**: AT&T's Response – Accept or reject stingy offers  
+**Step 3**: eBay's Move – Choose settlement offer (both types can choose either offer)  
+**Step 4**: AT&T's Response – Accept or reject stingy offers (generous offers auto‑accepted)  
 **Step 5**: Show Results  
 **Step 6**: Summary Analysis
 """)
@@ -669,12 +670,8 @@ if name:
         if "ebay_response" not in match_data:
             guilt_status = match_data["ebay_guilt"]
             st.write(f"**Reminder**: You are {guilt_status}")
-            if guilt_status == "Innocent":
-                st.warning("⚠️ **Game Rule**: Innocent eBay is forced to offer Stingy (to simplify the strategy set)")
-                offer_options = ["Stingy"]
-            else:  # Guilty
-                st.info("💰 **Your Choice**: As a guilty party, you can choose either offer type")
-                offer_options = ["Generous", "Stingy"]
+            st.info("💰 **Your Choice**: You can choose either a Generous or a Stingy offer.")
+            offer_options = ["Generous", "Stingy"]
             offer = st.radio("Choose your settlement offer:", offer_options, help="Generous = High settlement amount, Stingy = Low settlement amount")
             if st.button("Submit Offer"):
                 match_ref.update({"ebay_response": offer, "ebay_timestamp": time.time()})
@@ -738,7 +735,7 @@ if name:
                 ebay_payoff, att_payoff = -320, 300
         else:  # Innocent
             if offer == "Generous" and response == "Accept":
-                ebay_payoff, att_payoff = 0, 0
+                ebay_payoff, att_payoff = -200, 200
             elif offer == "Stingy" and response == "Accept":
                 ebay_payoff, att_payoff = -20, 20
             else:  # Stingy + Reject
