@@ -7,6 +7,7 @@ import random
 import pandas as pd
 import matplotlib.pyplot as plt
 from datetime import datetime
+import io
 
 st.set_page_config(page_title="⚖️ eBay vs AT&T Classroom Game")
 
@@ -48,7 +49,7 @@ def plot_enhanced_percentage_bar(choices, labels, title, player_type):
         ax.set_ylabel("Percentage (%)", fontsize=14)
         ax.set_xlabel("Choice", fontsize=14)
         ax.tick_params(rotation=0, labelsize=12)
-        ax.set_ylim(0, max(100, counts.max() * 1.1))
+        ax.set_ylim(0, 100)
         ax.grid(True, alpha=0.3, linestyle='-', linewidth=0.5)
         for i, bar in enumerate(ax.patches):
             height = bar.get_height()
@@ -111,6 +112,7 @@ def create_pdf_report():
             ax1.bar(offer_counts.index, offer_counts.values, color=['#e74c3c', '#3498db'], alpha=0.8)
             ax1.set_title('eBay Settlement Offers', fontweight='bold')
             ax1.set_ylabel('Percentage (%)')
+            ax1.set_ylim(0, 100)
             for i, v in enumerate(offer_counts.values):
                 ax1.text(i, v + 1, f'{v:.1f}%', ha='center', fontweight='bold')
             ax1.grid(True, alpha=0.3)
@@ -118,6 +120,7 @@ def create_pdf_report():
             ax2.bar(response_counts.index, response_counts.values, color=['#3498db', '#e74c3c'], alpha=0.8)
             ax2.set_title('AT&T Responses', fontweight='bold')
             ax2.set_ylabel('Percentage (%)')
+            ax2.set_ylim(0, 100)
             for i, v in enumerate(response_counts.values):
                 ax2.text(i, v + 1, f'{v:.1f}%', ha='center', fontweight='bold')
             ax2.grid(True, alpha=0.3)
@@ -125,6 +128,7 @@ def create_pdf_report():
             ax3.bar(guilt_counts.index, guilt_counts.values, color=['#e74c3c', '#2ecc71'], alpha=0.8)
             ax3.set_title('eBay Guilt Distribution', fontweight='bold')
             ax3.set_ylabel('Percentage (%)')
+            ax3.set_ylim(0, 100)
             for i, v in enumerate(guilt_counts.values):
                 ax3.text(i, v + 1, f'{v:.1f}%', ha='center', fontweight='bold')
             ax3.grid(True, alpha=0.3)
@@ -141,6 +145,7 @@ def create_pdf_report():
                 ax4.bar(strategy_counts.index, strategy_counts.values, color=['#9b59b6', '#f39c12'], alpha=0.8)
                 ax4.set_title('eBay Strategy Analysis', fontweight='bold')
                 ax4.set_ylabel('Percentage (%)')
+                ax4.set_ylim(0, 100)
                 for i, v in enumerate(strategy_counts.values):
                     ax4.text(i, v + 1, f'{v:.1f}%', ha='center', fontweight='bold')
                 ax4.grid(True, alpha=0.3)
@@ -174,6 +179,42 @@ def create_pdf_report():
     import os
     os.unlink(temp_file.name)
     return pdf_content
+
+def export_payoffs_csv():
+    """Export all completed matches to a CSV string"""
+    all_matches = db.reference("lawsuit_matches").get() or {}
+    rows = []
+    for match_id, match_data in all_matches.items():
+        if "ebay_response" in match_data and "att_response" in match_data:
+            guilt = match_data["ebay_guilt"]
+            offer = match_data["ebay_response"]
+            response = match_data["att_response"]
+            if guilt == "Guilty":
+                if offer == "Generous" and response == "Accept":
+                    ebay_payoff, att_payoff = -200, 200
+                elif offer == "Stingy" and response == "Accept":
+                    ebay_payoff, att_payoff = -20, 20
+                else:
+                    ebay_payoff, att_payoff = -320, 300
+            else:
+                if offer == "Generous" and response == "Accept":
+                    ebay_payoff, att_payoff = 0, 0
+                elif offer == "Stingy" and response == "Accept":
+                    ebay_payoff, att_payoff = -20, 20
+                else:
+                    ebay_payoff, att_payoff = 0, -20
+            rows.append({
+                "Match ID": match_id,
+                "eBay Player": match_data["ebay_player"],
+                "AT&T Player": match_data["att_player"],
+                "eBay Status (Guilty/Innocent)": guilt,
+                "eBay Offer": offer,
+                "AT&T Response": response,
+                "eBay Payoff": ebay_payoff,
+                "AT&T Payoff": att_payoff
+            })
+    df = pd.DataFrame(rows)
+    return df.to_csv(index=False)
 
 # -------------------- Admin Panel --------------------
 admin_password = st.text_input("Admin Password:", type="password")
@@ -315,13 +356,11 @@ if admin_password == "admin123":
     st.subheader("🎲 Role Management")
     if total_registered >= 2 and total_registered % 2 == 0:
         if st.button("👥 Assign Roles (randomly half eBay, half AT&T)"):
-            # Clear existing matches and matched flags
             db.reference("lawsuit_matches").delete()
             for pname in all_players.keys():
                 db.reference(f"lawsuit_players/{pname}/role").delete()
                 db.reference(f"lawsuit_players/{pname}/guilt_status").delete()
                 db.reference(f"lawsuit_players/{pname}/matched").delete()
-            # Assign new roles
             player_names = list(all_players.keys())
             random.shuffle(player_names)
             half = total_registered // 2
@@ -352,11 +391,9 @@ if admin_password == "admin123":
         st.rerun()
 
     if st.button("🤝 Start Matching (pair each eBay with a unique AT&T)"):
-        # Clear existing matches and matching flag
         db.reference("lawsuit_matches").delete()
         for pname in all_players.keys():
             db.reference(f"lawsuit_players/{pname}/matched").delete()
-        # Get all eBay and AT&T players
         all_players_data = db.reference("lawsuit_players").get() or {}
         ebay_players_list = [p for p, data in all_players_data.items() if data.get("role") == "eBay"]
         att_players_list = [p for p, data in all_players_data.items() if data.get("role") == "AT&T"]
@@ -392,29 +429,14 @@ if admin_password == "admin123":
                         st.success("✅ PDF report generated successfully!")
                     except Exception as e:
                         st.error(f"Error generating PDF: {str(e)}")
-                        results_data = []
-                        for match_id, match_data in all_matches.items():
-                            if "ebay_response" in match_data and "att_response" in match_data:
-                                guilt = match_data["ebay_guilt"]
-                                offer = match_data["ebay_response"]
-                                response = match_data["att_response"]
-                                if guilt == "Guilty":
-                                    if offer == "Generous" and response == "Accept":
-                                        ebay_payoff, att_payoff = -200, 200
-                                    elif offer == "Stingy" and response == "Accept":
-                                        ebay_payoff, att_payoff = -20, 20
-                                    else:
-                                        ebay_payoff, att_payoff = -320, 300
-                                else:
-                                    if offer == "Generous" and response == "Accept":
-                                        ebay_payoff, att_payoff = 0, 0
-                                    elif offer == "Stingy" and response == "Accept":
-                                        ebay_payoff, att_payoff = -20, 20
-                                    else:
-                                        ebay_payoff, att_payoff = 0, -20
-                                results_data.append({"Match_ID": match_id, "eBay_Player": match_data["ebay_player"], "ATT_Player": match_data["att_player"], "eBay_Status": guilt, "Offer": offer, "Response": response, "eBay_Payoff": ebay_payoff, "ATT_Payoff": att_payoff})
-                        df = pd.DataFrame(results_data)
-                        st.download_button(label="📥 Download CSV (Fallback)", data=df.to_csv(index=False), file_name="lawsuit_game_results.csv", mime="text/csv")
+                        csv_data = export_payoffs_csv()
+                        st.download_button(label="📥 Download CSV (Fallback)", data=csv_data, file_name="lawsuit_game_results.csv", mime="text/csv")
+            else:
+                st.warning("No completed matches to export.")
+        if st.button("📊 Export Payoffs to CSV"):
+            if completed_matches > 0:
+                csv_data = export_payoffs_csv()
+                st.download_button(label="📥 Download CSV File", data=csv_data, file_name="lawsuit_payoffs.csv", mime="text/csv")
             else:
                 st.warning("No completed matches to export.")
     with col2:
@@ -434,7 +456,6 @@ if admin_password == "admin123":
     elif completed_matches >= (expected_players // 2) and expected_players > 0:
         st.success("🎉 All matches completed! Game finished.")
         st.header("📊 Admin View: Summary Analysis - Class Results vs Game Theory")
-        # Collect data
         ebay_offers = []
         att_responses = []
         guilt_statuses = []
@@ -467,7 +488,7 @@ if admin_password == "admin123":
                 bars = ax.bar(categories, percentages, color=['#e74c3c', '#2ecc71'], alpha=0.8)
                 ax.set_title("% Choosing Stingy Offer by eBay Type", fontsize=14, fontweight='bold')
                 ax.set_ylabel("Percentage (%)")
-                ax.set_ylim(0, 110)
+                ax.set_ylim(0, 100)
                 for bar, pct in zip(bars, percentages):
                     ax.text(bar.get_x() + bar.get_width()/2., bar.get_height() + 2, f'{pct:.1f}%', ha='center', va='bottom', fontweight='bold')
                 ax.grid(True, alpha=0.3)
@@ -486,7 +507,7 @@ if admin_password == "admin123":
                 bars = ax.bar(categories, percentages_vals, color=['#3498db', '#e74c3c'], alpha=0.8)
                 ax.set_title("AT&T Responses to Stingy Offers", fontsize=14, fontweight='bold')
                 ax.set_ylabel("Percentage (%)")
-                ax.set_ylim(0, 110)
+                ax.set_ylim(0, 100)
                 for bar, pct in zip(bars, percentages_vals):
                     ax.text(bar.get_x() + bar.get_width()/2., bar.get_height() + 2, f'{pct:.1f}%', ha='center', va='bottom', fontweight='bold')
                 ax.grid(True, alpha=0.3)
@@ -499,21 +520,21 @@ if admin_password == "admin123":
         with col1:
             if stingy_responses:
                 accept_stingy_pct = len([r for r in stingy_responses if r == "Accept"]) / len(stingy_responses) * 100
-                st.metric("AT&T Accept Stingy Offers", f"{accept_stingy_pct:.1f}%", "Theory: 40%")
+                st.metric("AT&T Accept Stingy Offers", f"{accept_stingy_pct:.1f}%")
             else:
-                st.metric("AT&T Accept Stingy Offers", "N/A", "Theory: 40%")
+                st.metric("AT&T Accept Stingy Offers", "N/A")
         with col2:
             if guilty_offers:
                 guilty_stingy_pct = len([o for o in guilty_offers if o == "Stingy"]) / len(guilty_offers) * 100
-                st.metric("Guilty eBay Choose Stingy", f"{guilty_stingy_pct:.1f}%", "Theory: ~43%")
+                st.metric("Guilty eBay Choose Stingy", f"{guilty_stingy_pct:.1f}%")
             else:
-                st.metric("Guilty eBay Choose Stingy", "N/A", "Theory: ~43%")
+                st.metric("Guilty eBay Choose Stingy", "N/A")
         with col3:
             if innocent_offers:
                 innocent_stingy_pct = len([o for o in innocent_offers if o == "Stingy"]) / len(innocent_offers) * 100
-                st.metric("Innocent eBay Choose Stingy", f"{innocent_stingy_pct:.1f}%", "Theory: 100%")
+                st.metric("Innocent eBay Choose Stingy", f"{innocent_stingy_pct:.1f}%")
             else:
-                st.metric("Innocent eBay Choose Stingy", "N/A", "Theory: 100%")
+                st.metric("Innocent eBay Choose Stingy", "N/A")
         st.success("🎉 **Dynamic Signaling Game Complete!**")
         if st.button("🔄 Manual Refresh"):
             st.rerun()
@@ -582,7 +603,6 @@ if name:
             player_ref.set({"joined": True, "timestamp": time.time()})
             st.success(f"👋 Welcome, {name}!")
             st.write("✅ You are registered!")
-            # After registration, re-check count and update lock flag if needed
             expected = db.reference("lawsuit_expected_players").get() or 0
             new_count = len(db.reference("lawsuit_players").get() or {})
             if new_count >= expected:
@@ -742,7 +762,7 @@ if name:
         st.balloons()
         st.success("✅ Your match is complete! Thank you for playing.")
 
-        # --- Step 6: Summary Analysis (only Theory vs Your Class Results, no Bayesian) ---
+        # --- Step 6: Summary Analysis for ALL players (only Theory vs Your Class Results, no deltas) ---
         st.header("📊 Step 6: Summary Analysis - Class Results vs Game Theory")
         all_matches = db.reference("lawsuit_matches").get() or {}
         completed_results = []
@@ -763,23 +783,22 @@ if name:
             with col1:
                 if stingy_responses:
                     accept_pct = len([r for r in stingy_responses if r == "Accept"]) / len(stingy_responses) * 100
-                    st.metric("AT&T Accept Stingy Offers", f"{accept_pct:.1f}%", "Theory: 40%")
+                    st.metric("AT&T Accept Stingy Offers", f"{accept_pct:.1f}%")
                 else:
-                    st.metric("AT&T Accept Stingy Offers", "N/A", "Theory: 40%")
+                    st.metric("AT&T Accept Stingy Offers", "N/A")
             with col2:
                 if guilty_offers:
                     guilty_stingy_pct = len([o for o in guilty_offers if o == "Stingy"]) / len(guilty_offers) * 100
-                    st.metric("Guilty eBay Choose Stingy", f"{guilty_stingy_pct:.1f}%", "Theory: ~43%")
+                    st.metric("Guilty eBay Choose Stingy", f"{guilty_stingy_pct:.1f}%")
                 else:
-                    st.metric("Guilty eBay Choose Stingy", "N/A", "Theory: ~43%")
+                    st.metric("Guilty eBay Choose Stingy", "N/A")
             with col3:
                 if innocent_offers:
                     innocent_stingy_pct = len([o for o in innocent_offers if o == "Stingy"]) / len(innocent_offers) * 100
-                    st.metric("Innocent eBay Choose Stingy", f"{innocent_stingy_pct:.1f}%", "Theory: 100%")
+                    st.metric("Innocent eBay Choose Stingy", f"{innocent_stingy_pct:.1f}%")
                 else:
-                    st.metric("Innocent eBay Choose Stingy", "N/A", "Theory: 100%")
+                    st.metric("Innocent eBay Choose Stingy", "N/A")
             
-            # Optional: Add a refresh button to update results without full page reload
             if st.button("🔄 Refresh Results"):
                 st.rerun()
         else:
