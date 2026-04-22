@@ -574,7 +574,7 @@ This is a **dynamic signaling game** between two players:
 - Stingy → Reject (Trial): (-320, 300)
 
 **If eBay is Innocent (75% probability):**
-- Generous → Accept: (-200, 200)  *(same as guilty case)*
+- Generous → Accept: (-200, 200)
 - Stingy → Accept: (-20, 20)
 - Stingy → Reject (Trial): (0, -20)  *(AT&T loses failed trial)*
 
